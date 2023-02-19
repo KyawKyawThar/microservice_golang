@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+#  logger-service:
+  #    container_name: logger-service
+  #    build:
+  #      context: ./logger-service/cmd
+  #    deploy:
+  #      replicas: 1
+  #      mode: replicated
+  #    depends_on:
+  #      - mongo
+  #    volumes:
+  #      - ./logger-service/cmd:/go/src/app
+
+
+  auth-service:
+    container_name: auth-service
+    build:
+      context: ./auth-service/cmd
+    ports:
+      - "8081:80"
+    depends_on:
+      - postgres
+    deploy:
+      mode: replicated
+      replicas: 1
+    environment:
+      DSN: "host=postgres port=5432 user=postgres password=password dbname=users sslmode=disable timezone=UTC connect_timeout=5"
+    volumes:
+      - ./auth-service/cmd:/go/src/app
+
+  broker-service:
+    container_name: broker-service
+    build:
+      context: ./broker-service/cmd
+    ports:
+      - "8080:80"
+    deploy:
+      mode: replicated
+      replicas: 1
+    volumes:
+      - ./broker-service/cmd:/go/src/app
+  postgres:
+    image: 'postgres:15.2'
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: users
+    deploy:
+      mode: replicated
+      replicas: 1
+    volumes:
+      - ./project/db-data/postgres:/var/lib/postgresql/data/
+
+
+  mongo:
+    image: 'mongo:4.2-rc-bionic'
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_DATABASE: logs
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - ./project/db-data/mongo:/data/db
+#  mailhog:
+#    image: 'mailhog/mailhog:latest'
+#    ports:
+#      - "1025:1025"
+#      - "8025:8025"
