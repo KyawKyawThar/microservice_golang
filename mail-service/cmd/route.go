@@ -10,7 +10,7 @@ import (
 
 func (app *Config) routes() http.Handler {
 
-	log.Println("male-service routes call")
+	log.Println("mail-service route hits")
 	mux := chi.NewRouter()
 
 	mux.Use(cors.Handler(cors.Options{
@@ -29,6 +29,6 @@ func (app *Config) routes() http.Handler {
 	//ACL middlewares as well.
 
 	mux.Use(middleware.Heartbeat("/ping"))
-
+	mux.Post("/send", app.SendMail)
 	return mux
 }

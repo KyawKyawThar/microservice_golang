@@ -1,10 +1,12 @@
 package main
 
 import (
+	"broker-service/event"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 )
@@ -13,6 +15,7 @@ type RequestPayload struct {
 	Action string      `json:"action"`
 	Auth   AuthPayload `json:"auth"`
 	Log    LogPayload  `json:"log,omitempty"`
+	Mail   MailPayload `json:"mail,omitempty"`
 }
 
 type AuthPayload struct {
@@ -23,6 +26,13 @@ type AuthPayload struct {
 type LogPayload struct {
 	Name string `json:"name"`
 	Data string `json:"data"`
+}
+
+type MailPayload struct {
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+	Subject string `json:"subject,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 //type LogPayload struct {}
@@ -42,45 +52,90 @@ func (app *Config) Broker(w http.ResponseWriter, r *http.Request) {
 // processes it, and sends it where it needs to go
 func (app *Config) HandleSubmit(w http.ResponseWriter, r *http.Request) {
 
-	//read, _ := io.ReadAll(r.Body)
-	//var auth AuthPayload
-	//json.Unmarshal(read, &auth)
+	read, _ := io.ReadAll(r.Body)
+
+	//{
+	//	"action": "auth",
+	//	"email": "admin@example.com",
+	//	"password": "verysecret"
+	//}
+
+	//{
+	//	"action": "logs",
+	//	"name": "event",
+	//	"data": "Some kind of data"
 	//
-	//log.Printf("new Data %T", auth.Password)
+	//}
+	//jsonData := fmt.Sprintf("%s", read)
 
 	var requestedPayload RequestPayload
+	var auth AuthPayload
+	var logs LogPayload
+	var mails MailPayload
 
-	//
-	err := app.readJSON(w, r, &requestedPayload)
+	_ = json.Unmarshal(read, &auth)
+	_ = json.Unmarshal(read, &requestedPayload)
+	_ = json.Unmarshal(read, &logs)
+	_ = json.Unmarshal(read, &mails)
 
-	if err != nil {
-		err = app.errorJSON(w, err)
-		return
-	}
-	//
-	requestedPayload.Auth = AuthPayload{
-		Email:    "admin@example.com",
-		Password: "verysecret",
-	}
-
-	requestedPayload.Log = LogPayload{
-		Name: "event",
-		Data: "Some kind of data",
-	}
+	//requestedPayload.Log = LogPayload{
+	//	Name: "event",
+	//	Data: "Some kind of data",
+	//}
 
 	switch requestedPayload.Action {
 	case "auth":
-		app.authenticate(w, requestedPayload.Auth)
-	case "log":
-		app.logItem(w, requestedPayload.Log)
+		app.authenticate(w, auth)
+	case "logs":
+		//app.logItem(w, logs)
+		app.logEventViaRabbit(w, logs)
+	case "mails":
+		app.SendMail(w, mails)
 	default:
 		_ = app.errorJSON(w, errors.New("unknown action"))
 	}
+
+	//var requestedPayload RequestPayload
+	////
+	//err := app.readJSON(w, r, &requestedPayload)
+	////
+	//if err != nil {
+	//	err = app.errorJSON(w, err)
+	//	return
+	//}
+	//
+	//requestedPayload.Auth = AuthPayload{
+	//	Email:    "admin@example.com",
+	//	Password: "verysecret",
+	//}
+	//
+	//requestedPayload.Log = LogPayload{
+	//	Name: "event",
+	//	Data: "Some kind of data",
+	//}
+
+	//{
+	//	"action": "mails",
+	//	"from": "me@example.com",
+	//	"to": "kyawkyaw.thar84@gmail.com",
+	//	"subject":"Test Mail",
+	//	"message": "Hello Blockchain"
+	//}
+	//
+	//switch requestedPayload.Action {
+	//case "auth":
+	//	app.authenticate(w, requestedPayload.Auth)
+	//case "log":
+	//	app.logItem(w, requestedPayload.Log)
+	//default:
+	//	_ = app.errorJSON(w, errors.New("unknown action"))
+	//}
 }
 
 // logItem logs an event using the logger-service. It makes the call by pushing the data to RabbitMQ.
 func (app *Config) logItem(w http.ResponseWriter, l LogPayload) {
 
+	log.Println("kkt", l)
 	jsonData, _ := json.MarshalIndent(l, "", "\t")
 
 	logServiceURL := fmt.Sprintf("http://%s/log", "logger-service")
@@ -119,15 +174,16 @@ func (app *Config) logItem(w http.ResponseWriter, l LogPayload) {
 // of type requestPayload, with AuthPayload embedded.
 func (app *Config) authenticate(w http.ResponseWriter, a AuthPayload) {
 
+	log.Println("authenticate", a)
 	//{admin@example.com verysecret}
 
 	// create json we'll send to the authentication-service
 	jsonData, _ := json.MarshalIndent(a, "", "\t")
 	//call the service
 	//authServiceURL := fmt.Sprintf("http://%s/authenticated", "127.0.0.1:81")
-	testServiceURL := fmt.Sprintf("http://%s/authenticated", "auth-service")
+	authServiceURL := fmt.Sprintf("http://%s/authenticated", "auth-service")
 
-	request, err := http.NewRequest("POST", testServiceURL, bytes.NewBuffer(jsonData))
+	request, err := http.NewRequest("POST", authServiceURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Println("err func call")
 		err = app.errorJSON(w, err)
@@ -182,4 +238,84 @@ func (app *Config) authenticate(w http.ResponseWriter, a AuthPayload) {
 
 	_ = app.writeJSON(w, http.StatusAccepted, payload)
 
+}
+
+func (app *Config) SendMail(w http.ResponseWriter, msg MailPayload) {
+
+	jsonData, err := json.MarshalIndent(msg, "", "\t")
+
+	mailServiceURL := fmt.Sprintf("http://%s/send", "mail-service")
+
+	request, err := http.NewRequest("POST", mailServiceURL, bytes.NewBuffer(jsonData))
+
+	if err != nil {
+		log.Println("err func call", err)
+		err = app.errorJSON(w, err)
+		return
+	}
+
+	request.Header.Set("Content-type", "application/json")
+	client := http.Client{}
+
+	response, err := client.Do(request)
+
+	if err != nil {
+		_ = app.errorJSON(w, err)
+		return
+	}
+
+	defer response.Body.Close()
+
+	fmt.Printf("Response of status code %d\n", response.StatusCode)
+	if response.StatusCode != http.StatusAccepted {
+		err = app.errorJSON(w, err)
+		return
+	}
+
+	var payload jsonResponse
+
+	payload.Error = false
+	payload.Message = "Message sent to: " + msg.To
+
+	log.Println("value of mail-service payload is %v\n", payload)
+	_ = app.writeJSON(w, http.StatusAccepted, payload)
+}
+
+func (app *Config) logEventViaRabbit(w http.ResponseWriter, l LogPayload) {
+
+	err := app.pushToQueue(l.Name, l.Data)
+
+	if err != nil {
+		_ = app.errorJSON(w, err)
+		return
+	}
+
+	var payload jsonResponse
+
+	payload.Error = false
+	payload.Message = "logged via RabbitMQ"
+
+	_ = app.writeJSON(w, http.StatusAccepted, payload)
+}
+
+func (app *Config) pushToQueue(name, msg string) error {
+	emitter, err := event.NewEventEmitter(app.Rabbit)
+
+	if err != nil {
+		return err
+	}
+
+	payload := LogPayload{
+		Name: name,
+		Data: msg,
+	}
+
+	j, _ := json.MarshalIndent(&payload, "", "\t")
+
+	err = emitter.Push(string(j), "log.INFO")
+
+	if err != nil {
+		return err
+	}
+	return nil
 }

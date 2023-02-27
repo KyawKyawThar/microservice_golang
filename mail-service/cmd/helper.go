@@ -23,7 +23,6 @@ func (app *Config) readJSON(w http.ResponseWriter, r *http.Request, data any) er
 
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
 
-	log.Println("readJSON", r.Body)
 	desc := json.NewDecoder(r.Body)
 	err := desc.Decode(data)
 
@@ -70,7 +69,7 @@ func (app *Config) readJSON(w http.ResponseWriter, r *http.Request, data any) er
 // writeJSON takes a response status code and arbitrary data and writes a json response to the client
 func (app *Config) writeJSON(w http.ResponseWriter, status int, data any, headers ...http.Header) error {
 
-	log.Println("WriteJSON", data)
+	log.Println("WriteJSON")
 
 	out, err := json.Marshal(data)
 
